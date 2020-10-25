@@ -1,5 +1,6 @@
-from git import Repo
+from git import Repo 
 import os
+from shutil import which
 
 class RepoData:
     def __init__(self, name = None, remote = None, local = 'deps/', branch = 'master'):
@@ -34,7 +35,7 @@ class RepoData:
         except Exception:
             print("Unable to bind to repo. Will attempt to clone repo.")
        
-        print("Attempting to clone repo: {0}".format(self))
+        print(f"Attempting to clone repo: {self}")
         try:
             self.repo = Repo.clone_from(self.remote, self.GetLocalPath(), branch=self.branch)
             print("Successfully cloned repo.")
@@ -44,7 +45,7 @@ class RepoData:
         
         print("Unable to properly configure repository.")
 
-def make_symlink(src,dst,overwrite=False):
+def MakeSymlink(src,dst,overwrite=False):
     exists = os.path.exists(dst)
     if not exists or exists and overwrite:
         os.symlink(src,dst)
@@ -52,16 +53,31 @@ def make_symlink(src,dst,overwrite=False):
     else:
         print(f"Not creating symlink between {src} and {dst}.")
 
-def main():
-    # acquire required git repos
+def FindBinaries(deps):
+    return { k: which(k) for k,v in deps.items() }
 
+def GetMissingDeps(deps):
+    return [k for k,v in deps.items() if v is None]
+
+def main():
+    # first, look for binaries
+    # if we don't have them, print an error 
+    # and tell user to download them
+    
+    binary_deps = {'cmake': None, 'ccls': None}
+    binary_deps = FindBinaries(binary_deps)
+    missing_deps = GetMissingDeps(binary_deps)
+    if bool(missing_deps):
+        print(f"Missing dependencies to configure development environment. Please install: {missing_deps} and try again.")
+        return
+
+    # acquire required git repos
     # Vim Configurations repo data
     vimc = RepoData(name='vim_configurations', 
                         remote='https://github.com/freelandm/vim_configurations.git')
     # CCLS repo data
     ccls = RepoData(name='ccls',
                     remote='https://github.com/MaskRay/ccls')
-
     # BEAR repo data
     bear = RepoData(name='bear',
                     remote='https://github.com/rizsotto/Bear.git')
@@ -71,11 +87,12 @@ def main():
     ccls.BindOrClone()
     bear.BindOrClone()
 
-    # symlink virc
-    src=os.path.expanduser("~")+"/.vimrc"
-    dst=os.getcwd()+"/"+vimc.GetLocalPath()+"/vimrc"
-    make_symlink(src,dst)
-    
+    # symlink vimrc, coc-settings from repo to default search path
+    src=os.getcwd()+"/"+vimc.GetLocalPath()
+    dst=os.path.expanduser("~")
+
+    MakeSymlink(src+"/vimrc",dst+"/.vimrc")
+    MakeSymlink(src+"/coc-settings.json", dst+"/.vim/coc-settings.json")
 
 if __name__ == '__main__':
     main()
