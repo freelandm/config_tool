@@ -1,6 +1,9 @@
 from git import Repo 
 import os
 from shutil import which
+import wget
+import tarfile
+import subprocess
 
 class RepoData:
     def __init__(self, name = None, remote = None, local = 'deps/', branch = 'master'):
@@ -11,11 +14,14 @@ class RepoData:
         self.repo = None
         self.local_path = self.make_path()
 
+    #internal method
     def make_path(self):
         if self.name is not None and self.local is not None:
             slash = '/'
             if self.local.endswith(slash):
                 slash = ''
+            if not os.path.exists(self.local):
+                os.mkdir(self.local)
             return self.local + slash + self.name
 
     def GetLocalPath(self):
@@ -53,28 +59,99 @@ def MakeSymlink(src,dst,overwrite=False):
     else:
         print(f"Not creating symlink between {src} and {dst}.")
 
-def FindBinaries(deps):
-    return { k: which(k) for k,v in deps.items() }
+def FindBinary(prg):
+    return which(prg)
 
 def GetMissingDeps(deps):
     return [k for k,v in deps.items() if v is None]
 
-def main():
-    # first, look for binaries
-    # if we don't have them, print an error 
-    # and tell user to download them
+def GetVimVersion(vimb):
+    # need to get the output here...
+    subprocess.run(vimb, "--version")
+
+
+def PrepareDeps():
+    ccls = 'ccls'
+    bear = 'bear'
+    vim = 'vim'
+    deps = {ccls:None, bear:None, vim:None}
+    missing_deps = []
+    deps[ccls] = FindBinary(ccls)
+    deps[vim] = FindBinary(vim)
+    if deps[ccls] is None:
+        missing_deps.append(ccls)
+        cmake = 'cmake'
+        deps[cmake] = FindBinary(cmake)
+        if deps[cmake] is None:
+            missing_deps.append(cmake)
+    if deps[vim] is None or not GetVimVersion(deps[vim]) >= 8.0:
+        missing_deps.append(vim)
     
-    binary_deps = {'cmake': None, 'ccls': None}
-    binary_deps = FindBinaries(binary_deps)
-    missing_deps = GetMissingDeps(binary_deps)
-    if bool(missing_deps):
-        print(f"Missing dependencies to configure development environment. Please install: {missing_deps} and try again.")
+
+    return deps, missing_deps
+
+def InstallCmake():
+    url = "https://github.com/Kitware/CMake/releases/download/v3.18.4/cmake-3.18.4.tar.gz"
+    os.chdir("deps")
+    filename = wget.download(url)
+    # actually untar the contents
+    # using tarfile.extract.
+
+    return False
+
+def InstallCcls():
+    return False
+
+def InstallVim8():
+    return False
+
+def InstallBear():
+    return False
+
+def install_failure_log(name):
+    return f'Failed to install {name}. Unable to proceed. Please manually install {name} and try again.'
+
+def InstallDeps(missing_deps):
+    success = True
+
+    if 'cmake' in missing_deps:
+        if not InstallCmake():
+            print(install_failure_log('cmake'))
+            success = False
+
+    if 'ccls' in missing_deps:
+        if not InstallCcls():
+            print(install_failure_log('ccls'))
+            success = False
+
+    if 'vim' in missing_deps:
+        if not InstallVim8():
+            print(install_failure_log('vim'))
+            success = False
+
+    if 'bear' in missing_deps:
+        if not InstallBear():
+            print(install_failure_log('bear'))
+            success = False
+
+    return success
+
+
+def main():
+
+    # with argparser, we can provide a path for downloaded binaries
+
+    deps, missing_deps = PrepareDeps()
+    print(f'Deps: {deps}, missing_deps: {missing_deps}')
+    if not InstallDeps(missing_deps):
+        print("Failed to install dependencies. Bailing out.")
         return
 
-    # acquire required git repos
     # Vim Configurations repo data
     vimc = RepoData(name='vim_configurations', 
                         remote='https://github.com/freelandm/vim_configurations.git')
+
+    # the following should be under the hood of install dependencies.
     # CCLS repo data
     ccls = RepoData(name='ccls',
                     remote='https://github.com/MaskRay/ccls')
