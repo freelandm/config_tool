@@ -4,6 +4,10 @@ from shutil import which
 import wget
 import tarfile
 import subprocess
+import csv
+
+gMinVimVersion = 8.3
+gMinNodeVersion = 10.12
 
 class RepoData:
     def __init__(self, name = None, remote = None, local = 'deps/', branch = 'master'):
@@ -67,40 +71,70 @@ def GetMissingDeps(deps):
 
 def GetVimVersion(vimb):
     # need to get the output here...
-    subprocess.run(vimb, "--version")
+    process = subprocess.Popen([vimb, "--version"], stdout=subprocess.PIPE)
+    stdout, stderr = process.communicate()
+    reader = csv.DictReader(stdout.decode('ascii').splitlines(), delimiter=' ', skipinitialspace=True, fieldnames=['VIM', 'dash', 'Vi', 'IMproved', 'version', 'remainder'])
+    index = 0
+    row_dict = {}
+    while index < 1:
+        for row in reader:
+            row_dict = row
+            index += 1
+            break
+    return float(row_dict['version'])
 
+def GetNodeVersion(nodeb):
+    output = subprocess.getoutput(nodeb+" --version")
+    vlist = output.split('v')[1].split('.')
+    version = float(vlist[0]+'.'+vlist[1])
+    return version
 
 def PrepareDeps():
     ccls = 'ccls'
     bear = 'bear'
     vim = 'vim'
-    deps = {ccls:None, bear:None, vim:None}
+    node = 'node'
+    deps = {ccls:None, bear:None, vim:None, node:None}
     missing_deps = []
     deps[ccls] = FindBinary(ccls)
     deps[vim] = FindBinary(vim)
+    deps[node] = FindBinary(node)
     if deps[ccls] is None:
         missing_deps.append(ccls)
         cmake = 'cmake'
         deps[cmake] = FindBinary(cmake)
         if deps[cmake] is None:
             missing_deps.append(cmake)
-    if deps[vim] is None or not GetVimVersion(deps[vim]) >= 8.0:
+    if deps[vim] is None or GetVimVersion(deps[vim]) < gMinVimVersion:
+        if deps[vim] is not None:
+            print(min_version_error_log(vim, deps[vim], GetVimVersion(deps[vim]), gMinVimVersion))
+        else:
+            print("Vim binary not found.")
         missing_deps.append(vim)
+    if deps[node] is None or GetNodeVersion(deps[node]) < gMinNodeVersion:
+        if deps[node] is not None:
+            print(min_version_error_log(node, deps[node], GetNodeVersion(deps[node]), gMinNodeVersion))
+        else:
+            print("Node binary not found. Try running {} to install Node.".format('curl -sL install-node.now.sh/lts | bash'))
+        missing_deps.append(node)
     
 
     return deps, missing_deps
 
 def InstallCmake():
-    url = "https://github.com/Kitware/CMake/releases/download/v3.18.4/cmake-3.18.4.tar.gz"
-    os.chdir("deps")
-    filename = wget.download(url)
-    # actually untar the contents
-    # using tarfile.extract.
-
+    print("No access to 'yum' package via python. To install 'cmake' manually, please run 'yum install cmake'.")
     return False
 
 def InstallCcls():
-    return False
+    # CCLS repo data
+    ccls = RepoData(name='ccls',
+                    remote='https://github.com/MaskRay/ccls')
+    ccls.BindOrClone()
+    cmake = 'cmake'
+    cmakeb = FindBinary(cmake)
+    os.chdir(ccls.GetLocalPath())
+    
+
 
 def InstallVim8():
     return False
@@ -111,6 +145,9 @@ def InstallBear():
 def install_failure_log(name):
     return f'Failed to install {name}. Unable to proceed. Please manually install {name} and try again.'
 
+def min_version_error_log(name, path, insv, minv):
+    return f'{name} version is too low. Current version installed at {path} has version {insv}. Minimum supported version is {minv}'
+
 def InstallDeps(missing_deps):
     success = True
 
@@ -120,9 +157,12 @@ def InstallDeps(missing_deps):
             success = False
 
     if 'ccls' in missing_deps:
-        if not InstallCcls():
-            print(install_failure_log('ccls'))
-            success = False
+        if 'cmake' not in missing_deps:
+            if not InstallCcls():
+                print(install_failure_log('ccls'))
+                success = False
+        else:
+            print('Missing cmake. Will not try to install ccls.')
 
     if 'vim' in missing_deps:
         if not InstallVim8():
@@ -152,16 +192,12 @@ def main():
                         remote='https://github.com/freelandm/vim_configurations.git')
 
     # the following should be under the hood of install dependencies.
-    # CCLS repo data
-    ccls = RepoData(name='ccls',
-                    remote='https://github.com/MaskRay/ccls')
     # BEAR repo data
     bear = RepoData(name='bear',
                     remote='https://github.com/rizsotto/Bear.git')
 
     # bind to repository
     vimc.BindOrClone()
-    ccls.BindOrClone()
     bear.BindOrClone()
 
     # symlink vimrc, coc-settings from repo to default search path
